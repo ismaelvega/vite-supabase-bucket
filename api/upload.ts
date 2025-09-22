@@ -80,18 +80,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Parse the uploaded file
     const contentType = req.headers['content-type']
-    if (!contentType?.includes('multipart/form-data')) {
-      return res.status(400).json({ error: 'Invalid content type' })
+    if (!contentType?.includes('application/json')) {
+      return res.status(400).json({ error: 'Content-Type must be application/json' })
     }
 
     // Get file data from request body
-    // Note: This is a simplified approach. In production, use a proper multipart parser
     const rawBody = req.body
     if (!rawBody || typeof rawBody !== 'object') {
       return res.status(400).json({ error: 'No file provided' })
     }
-
-    // For this example, assuming the file comes as base64 in the body
     const { fileData, fileName, fileSize } = rawBody as {
       fileData: string
       fileName: string
