@@ -11,8 +11,15 @@
 
 .upload-container h1 {
   color: #333;
-  margin-bottom: 2rem;
+  margin-bottom: 0.5rem;
   font-size: 2rem;
+}
+
+.subtitle {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+  font-weight: 400;
 }
 
 .drop-zone {

@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react'
-import { supabase, BUCKET_NAME } from '../lib/supabase'
 
 interface UploadedFile {
   name: string
   url: string
   downloadUrl: string
+  expiresAt: string
 }
 
 export function FileUpload() {
@@ -19,18 +19,25 @@ export function FileUpload() {
       setError('Only PDF files are allowed')
       return false
     }
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
-      setError('File size must be less than 10MB')
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      setError('File size must be less than 5MB')
       return false
     }
     return true
   }
 
-  const generateFileName = (originalName: string): string => {
-    const timestamp = Date.now()
-    const extension = originalName.split('.').pop()
-    const nameWithoutExtension = originalName.replace(/\.[^/.]+$/, '')
-    return `${timestamp}-${nameWithoutExtension}.${extension}`
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = () => {
+        const result = reader.result as string
+        // Remove data:application/pdf;base64, prefix
+        const base64 = result.split(',')[1]
+        resolve(base64)
+      }
+      reader.onerror = reject
+    })
   }
 
   const uploadFile = async (file: File) => {
@@ -40,41 +47,32 @@ export function FileUpload() {
     setError(null)
 
     try {
-      const fileName = generateFileName(file.name)
+      const fileData = await fileToBase64(file)
 
-      const { data, error: uploadError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileData,
+          fileName: file.name,
+          fileSize: file.size
         })
+      })
 
-      if (uploadError) {
-        throw uploadError
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Upload failed')
       }
 
-      // Generate signed URLs for viewing and downloading (1 year expiration)
-      const { data: urlData, error: urlError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .createSignedUrl(fileName, 31536000) // 1 year in seconds
-
-      if (urlError) {
-        throw urlError
-      }
-
-      // Generate download URL
-      const { data: downloadData, error: downloadError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .createSignedUrl(fileName, 31536000, { download: true })
-
-      if (downloadError) {
-        throw downloadError
-      }
+      const result = await response.json()
 
       setUploadedFile({
-        name: file.name,
-        url: urlData.signedUrl,
-        downloadUrl: downloadData.signedUrl
+        name: result.file.name,
+        url: result.file.url,
+        downloadUrl: result.file.downloadUrl,
+        expiresAt: result.file.expiresAt
       })
 
     } catch (err) {
@@ -118,9 +116,18 @@ export function FileUpload() {
     }
   }
 
+  const formatExpirationDate = (isoString: string): string => {
+    return new Date(isoString).toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  }
+
   return (
     <div className="upload-container">
       <h1>PDF Upload to Supabase</h1>
+      <p className="subtitle">Secure upload via Vercel API • Max 5MB • 5 uploads/hour</p>
 
       {!uploadedFile && (
         <div
@@ -143,13 +150,13 @@ export function FileUpload() {
           {uploading ? (
             <div className="upload-status">
               <div className="spinner"></div>
-              <p>Uploading...</p>
+              <p>Uploading securely...</p>
             </div>
           ) : (
             <div className="upload-prompt">
               <div className="upload-icon">📄</div>
               <p>Click to select or drag & drop a PDF file</p>
-              <p className="file-info">PDF files only, max 10MB</p>
+              <p className="file-info">PDF files only, max 5MB</p>
             </div>
           )}
         </div>
@@ -167,7 +174,8 @@ export function FileUpload() {
           <h2>✅ Upload Successful!</h2>
           <div className="file-info">
             <p><strong>File:</strong> {uploadedFile.name}</p>
-            <p><strong>Link expires:</strong> 1 year from now</p>
+            <p><strong>Link expires:</strong> {formatExpirationDate(uploadedFile.expiresAt)}</p>
+            <p><strong>Security:</strong> Server-side validated & rate-limited</p>
           </div>
 
           <div className="file-actions">
