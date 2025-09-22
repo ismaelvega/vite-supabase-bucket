@@ -1,5 +1,3 @@
-Ok so Im going to use Vercel functions.
-
 Im having my first steps with Supabase Buckets, I want to see if it's a good fit for my use case.
 
 My app will not have auth.
